@@ -1,0 +1,81 @@
+---
+title: "MusicRec_Col_Filtering"
+author: "Yitong Chen"
+date: "10/25/2020"
+output: md_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(softImpute)
+```
+
+
+
+```{r}
+Songs <- read.csv("Songs.csv", sep = ",")
+MusicRatings <- read.csv("MusicRatings.csv", sep = ",")
+Users <- read.csv("Users.csv", sep = ",")
+```
+
+Load the data and calculate some summary statistics
+```{r}
+
+paste("Total Songs:", nrow(unique(MusicRatings["songID"])))
+
+paste("Total users:", nrow(unique(Users)))
+
+paste("Range of ratings: (" ,min(MusicRatings["rating"]),",",max(MusicRatings["rating"]),")")
+```
+
+1. ## Train Test Split
+a) Training set with 84% of the observations.<br/>
+b) Validation set A to be used for tuning the collaborative filtering model, with 4% of the observations.<br/>
+c) Validation set B to be used for blending, with 4% of the observations.
+d) Testing set with 8% of the observations
+```{r}
+set.seed(345)
+train.ids <- sample(nrow(MusicRatings), 0.92*nrow(MusicRatings))
+train <- MusicRatings[train.ids,]
+test <- MusicRatings[-train.ids,]
+
+
+## split out the validation part
+val.ids <- sample(nrow(train), (8/92)*nrow(train))
+val <- train[val.ids,]
+
+## update train set
+train <- train[-val.ids,]
+
+## get valA and val B
+valA.ids <- sample(nrow(val), 0.5*nrow(val))
+valA <- val[valA.ids,]
+valB <- val[-valA.ids,]
+```
+
+e) construct an incomplet training set ratings matrix.
+```{r}
+mat.train <- Incomplete(train$userID, train$songID, train$rating)
+
+paste("Dimension of the matrix", dim(mat.train)[1], "*", dim(mat.train)[2])
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
