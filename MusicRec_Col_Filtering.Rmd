@@ -68,7 +68,7 @@ Let $X$ denote the “complete” ratings matrix, i.e., $X_{i,j}$ denotes either
 rating if user i actually rated song j or the “hypothetical” such rating if user i has not yet
 rated song j. We are interested in predicting the values of $X_{i,j}$ that are not observed. Let us
 first consider the following model: <br/>
-<center> $X_{i,j} = \alpha_{i} + \beta_{j} + \epsilon_{i,j}$ </center> <br/>
+\center __$X_{i,j} = \alpha_{i} + \beta_{j} + \epsilon_{i,j}$__ \center <br/>
 
 where $\alpha_i$ is a coefficient that depends only on the particular row i (i.e., user), "j is a coefficient
 that depends only on the particular column j (i.e., song), and $\epsilon_{i,j}$ is a noise term.
