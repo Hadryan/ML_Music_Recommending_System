@@ -21,14 +21,13 @@ Load the data and calculate some summary statistics
 1.  Train Test Split
     ----------------
 
-<!-- -->
+    #### a) Training set with 84% of the observations.<br/>
 
-1.  Training set with 84% of the observations.<br/>
-2.  Validation set A to be used for tuning the collaborative filtering
-    model, with 4% of the observations.<br/>
-3.  Validation set B to be used for blending, with 4% of the
-    observations.
-4.  Testing set with 8% of the observations
+    #### b) Validation set A to be used for tuning the collaborative filtering model, with 4% of the observations.<br/>
+
+    #### c) Validation set B to be used for blending, with 4% of the observations.
+
+    #### d) Testing set with 8% of the observations
 
 <!-- -->
 
@@ -50,9 +49,7 @@ Load the data and calculate some summary statistics
     valA <- val[valA.ids,]
     valB <- val[-valA.ids,]
 
-1.  construct an incomplet training set ratings matrix.
-
-<!-- -->
+#### e) construct an incomplet training set ratings matrix.
 
     mat.train <- Incomplete(train$userID, train$songID, train$rating)
 
