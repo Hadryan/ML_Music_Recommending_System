@@ -56,3 +56,27 @@ Load the data and calculate some summary statistics
     paste("Dimension of the matrix", dim(mat.train)[1], "*", dim(mat.train)[2])
 
     ## [1] "Dimension of the matrix 2421 * 807"
+
+2. Models
+---------
+
+Let *X* denote the “complete” ratings matrix, i.e.,
+*X*<sub>*i*, *j*</sub> denotes either the observed rating if user i
+actually rated song j or the “hypothetical” such rating if user i has
+not yet rated song j. We are interested in predicting the values of
+*X*<sub>*i*, *j*</sub> that are not observed. Let us first consider the
+following model: <br/>
+*X*<sub>*i*, *j*</sub> = *α*<sub>*i*</sub> + *β*<sub>*j*</sub> + *ϵ*<sub>*i*, *j*</sub>
+<br/>
+
+where *α*<sub>*i*</sub> is a coefficient that depends only on the
+particular row i (i.e., user), "j is a coefficient that depends only on
+the particular column j (i.e., song), and *ϵ*<sub>*i*, *j*</sub> is a
+noise term.
+
+#### i) Parameters
+
+There are two types of parameters in this model *α* and *β*; A total of
+2421 *α* and 807 *β*. So there are 3228 parameters to fit. <br/>
+There’re 243104 observations in the training set, so we’ll train the
+model with 243104 observations and fill in the rest of the matrix.
