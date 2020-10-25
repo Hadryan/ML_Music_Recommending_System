@@ -20,7 +20,7 @@ goal of this problem will be to recommend specific songs to specific users.
 ## Data
 
 • Songs.csv: each observation corresponds to a song and it includes the song’s ID, name, year,
-artist, and genre. Observations are sorted by song ID, in ascending order.
+artist, and genre. Observations are sorted by song ID, in ascending order. <br/>
 • Users.csv: a list of all user (listener) IDs, in ascending order.
 • MusicRatings.csv: derived ratings of songs based on each user’s listening history. Each
 observation contains the user ID, the song ID, and the derived rating
