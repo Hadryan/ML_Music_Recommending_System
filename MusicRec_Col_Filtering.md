@@ -66,9 +66,9 @@ actually rated song j or the “hypothetical” such rating if user i has
 not yet rated song j. We are interested in predicting the values of
 *X*<sub>*i*, *j*</sub> that are not observed. Let us first consider the
 following model: <br/>
-<p align="justify">
-***X*<sub>*i*, *j*</sub> = *α*<sub>*i*</sub> + *β*<sub>*j*</sub> + *ϵ*<sub>*i*, *j*</sub>**
-</p>
+
+*X*<sub>*i*, *j*</sub> = *α*<sub>*i*</sub> + *β*<sub>*j*</sub> + *ϵ*<sub>*i*, *j*</sub>
+
 <br/>
 
 where *α*<sub>*i*</sub> is a coefficient that depends only on the
