@@ -2,7 +2,7 @@
 title: "MusicRec_Col_Filtering"
 author: "Yitong Chen"
 date: "10/25/2020"
-output: html_document
+output: md_document
 ---
 
 ```{r setup, include=FALSE}
@@ -11,8 +11,17 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r, message=FALSE}
 library(softImpute)
+library(ggplot2)
+library(tidyverse)
+library(MASS)
+library(rpart)
 ```
 
+# Content
+- 1. Data Preprocessing
+- 2. Simple Additive Method
+- 3. Collaborative Filtering method
+- 4. Blending Models with Extra Features
 
 
 ```{r}
@@ -23,6 +32,7 @@ Users <- read.csv("Users.csv", sep = ",")
 
 Load the data and calculate some summary statistics
 ```{r}
+hist(MusicRatings$rating)
 
 paste("Total Songs:", nrow(unique(MusicRatings["songID"])))
 
@@ -31,7 +41,8 @@ paste("Total users:", nrow(unique(Users)))
 paste("Range of ratings: (" ,min(MusicRatings["rating"]),",",max(MusicRatings["rating"]),")")
 ```
 
-1. ## Train Test Split
+## 1. Data Preprocessing
+### Train Test Split
 #### a) Training set with 84% of the observations.<br/>
 #### b) Validation set A to be used for tuning the collaborative filtering model, with 4% of the observations.<br/>
 #### c) Validation set B to be used for blending, with 4% of the observations.
@@ -63,12 +74,12 @@ mat.train <- Incomplete(train$userID, train$songID, train$rating)
 paste("Dimension of the matrix", dim(mat.train)[1], "*", dim(mat.train)[2])
 ```
 
-## 2. Models
+## 2. Simple Additiive Method
 Let $X$ denote the “complete” ratings matrix, i.e., $X_{i,j}$ denotes either the observed
 rating if user i actually rated song j or the “hypothetical” such rating if user i has not yet
 rated song j. We are interested in predicting the values of $X_{i,j}$ that are not observed. Let us
 first consider the following model: <br/>
-<div align="center"> $X_{i,j} = \alpha_{i} + \beta_{j} + \epsilon_{i,j}$
+<div align="center"> $X_{i,j} = \alpha_{i} + \beta_{j} + \epsilon_{i,j}$  (1)
 </div>
 <br/>
 
@@ -79,13 +90,234 @@ that depends only on the particular column j (i.e., song), and $\epsilon_{i,j}$ 
 There are two types of parameters in this model $\alpha$ and $\beta$; A total of 2421 $\alpha$ and 807 $\beta$. So there are 3228 parameters to fit. <br/>
 There're 243104 observations in the training set, so we'll train the model with 243104 observations and fill in the rest of the matrix.
 
+#### ii) Cost function
+The function biScale in the softImpute package fits a model of the form (1) using a leastsquares
+approach. That is, it solves the following optimization problem: <br/>
+<div align="center"> $min \sum_{(i,j)\in obs} (X_{i,j} - \beta_j - \alpha_i)^2$ <br/>
+</div>
+obs denotes the set of observed entries in the training set(here we set $X_{i,j} \leftarrow obs_{i,j}$ as all observations that  are observed). <br/>
+```{r}
+## standardized the matrix by biScale function
+biscale_matrix <- biScale(mat.train, maxit = 1000, row.scale = FALSE, col.scale = FALSE)
+
+# Aggregate over the column, neglecting all the NAs, a.k.a find the average over column to find the beta hat for each song
+no.userbias <- attr(biscale_matrix,'biScale:column')[[1]]
+
+# Aggregate over the row, neglecting all the NAs, a.k.a find the average over row to find the alpha hat for each song
+no.songbias <- attr(biscale_matrix,'biScale:row')[[1]]
+
+#append user alpha_hat to user
+Users$alpha <- no.songbias
+#append song beta_hat to song
+Songs$beta <- no.userbias
+```
+
+```{r}
+## top 3 songs
+head(Songs[order(-Songs$beta), ], 3)
+```
+
+```{r}
+## top 3 users give highest rating
+head(Users[order(-Users$alpha), ], 3)
+```
+
+```{r}
+## merge the user alpha_hat information into test.mod1
+test.mod1 <- merge(Users,test)
+## merge the song beta_hat information into test.mod1
+test.mod1 <- merge(dplyr::select(Songs,'songID','beta'),test.mod1)
+
+#add up alpha and beta to get x
+test.mod1$x <- test.mod1$alpha + test.mod1$beta 
+
+head(test.mod1,3)
+```
+
+
+#### calculate the metrics of the "Simple Additive" method
+```{r}
+scale = max(MusicRatings["rating"]) - min(MusicRatings["rating"])
+
+## normalized MAE and RMSE
+MAE <- mean(abs(test.mod1$x - test.mod1$rating))/scale
+MSE <- mean((test.mod1$x - test.mod1$rating)^2)
+RMSE <- sqrt(MSE)/scale
+
+#out-of-sample performace of biscale model
+OSR2 <- function(predictions, testActual) {
+  SSE <- sum((testActual - predictions)^2)
+  SST <- sum((testActual - mean(testActual))^2)
+  r2 <- 1 - SSE/SST
+  return(r2)
+}
+
+OSR2_Si = OSR2(test.mod1$x, test.mod1$rating)
+
+paste("Normalized Model 1 MAE: ",MAE)
+paste("Normalized Model 1 RMSE: ",RMSE)
+paste("OSR2: ",OSR2_Si)
+```
+
+## 3. Collaborative Filtering method
+Now let’s consider the following model: <br/>
+<div align="center"> $X_{i,j} = Z_{i,j} + \alpha_{i} + \beta_{j} + \epsilon_{i,j}$  (2) <br/>
+</div>
+which is the same as part (2) except for an additional term $Z_{i,j}$. Here, Z represents the
+low-rank collaborative filtering model, i.e., we presume that Z is a matrix with rank at most k. Equivalently, the number of archetypes is at most k. <br/>
+
+Therefore, there're 4 types of parameters in total. <br/>
+The first two types are the same as previous, 2421 users and 807 songs, now plus the latent variables in dimension k, so there are another 2421k + 807k parameters more. <br/> <br/>
+
+We will fit the model (2) by using the previously computed estimates of $\alpha$ and $\beta$ from part (2). That is, letting $\hat{\alpha}$ and $\hat{\beta}$ denote these estimates, we will use the softImpute function to fit a collaborative filtering model on the incomplete training set matrix of residuals $X_{i,j}^{C} = X_{i,j} − \hat{\alpha_{i}} − \hat{\beta_{j}}$. <br/><br/>
+Thankfully, this object has already been returned to us by the biScale function in part (2). <br/>
+Next, We'll use the previously constructed validation set A to determine the value of k, i.e., the
+number of archetypes that should be selected.
+```{r}
+mae.vals = rep(NA, 20)
+
+## we'll test k ranging from 1 to 20
+for (rnk in seq_len(20)) {
+  #print(str_c("Trying rank.max = ", rnk))
+  mod <- softImpute(biscale_matrix, rank.max = rnk, lambda = 0, maxit = 1000)
+  preds <- impute(mod, valA$userID, valA$songID) %>% pmin(5) %>% pmax(1) # clip rating from 1 to 5
+  mae.vals[rnk] <- mean(abs(preds - valA$rating))
+}
+
+mae.val.df <- data.frame(rnk = seq_len(20), mae = mae.vals)
+ggplot(mae.val.df, aes(x = rnk, y = mae)) + geom_point(size = 3) + 
+  ylab("Validation MAE") + xlab("Number of Archetypal Users") + 
+  theme_bw() + theme(axis.title=element_text(size=18), axis.text=element_text(size=18))
+
+```
+
+
+```{r}
+bestRank = which.min(mae.vals)
+
+mod.final <- softImpute(mat.train, rank.max = bestRank, lambda = 0, maxit = 1000)
+preds <- impute(mod.final, test$userID, test$songID) %>% pmin(5) %>% pmax(1)
+```
+
+```{r}
+MAE_Co <- mean(abs(preds - test$rating))/scale
+RMSE_Co <- sqrt(mean((preds - test$rating)^2))/scale
+OSR2_Co <- OSR2(preds, test$rating)
+
+paste("Best # of latent variable:", bestRank)
+paste("Normalized Model 2 MAE: ",MAE_Co)
+paste("Normalized Model 2 RMSE: ",RMSE_Co)
+paste("Model 2 OSR2: ", OSR2_Co)
+```
+
+
+## 4. Blending Models with Extra Features
+We'll add some additional features associated with the songs in this section.<br/>
+
+First, with the following independent variables: (i) genre of the song, (ii) year that the song was released, apply Linear Regression & CART to predict the rating seperately.<br/>
+Both (i) and (ii) are treated as factors/categorical variables and we'll use the train set data for training like before. 
+
+```{r}
+# preprocess the data
+train.d = merge(train, Songs)
+train.d$genre = as.factor(train.d$genre)
+train.d$year = as.factor(train.d$year)
+
+test.d = merge(test, Songs)
+test.d$genre = as.factor(test.d$genre)
+test.d$year = as.factor(test.d$year)
+```
+
+fit the linear regression
+```{r}
+lm_model <- lm(data = train.d, rating~ year + genre)
+summary(lm_model)
+```
+
+```{r}
+## get the testset performance of linear regression
+test.mod1$lm_pred = predict(lm_model, test.d)
+
+MAE_lm <- mean(abs(test.mod1$lm_pred - test.mod1$rating))/scale
+RMSE_lm <- sqrt(mean((test.mod1$lm_pred - test.mod1$rating)^2))/scale
+OSR2_lm <- OSR2(test.mod1$lm_pred, test.mod1$rating)
+
+paste("Linear Regression MAE: ",MAE_lm)
+paste("Linear Regression RMSE: ",RMSE_lm)
+paste("Linear Regression OSR2: ", OSR2_lm)
+```
+
+fit the CART
+```{r}
+CART <- rpart(rating ~ year + genre, 
+              data= train.d, method="anova") 
+
+test.mod1$cart_pred <- predict(CART, test.d)
+```
+
+```{r}
+MAE_cart <- mean(abs(test.mod1$cart_pred - test$rating))/scale
+RMSE_cart <- sqrt(mean((test.mod1$cart_pred - test$rating)^2))/scale
+OSR2_cart <- OSR2(test.mod1$cart_pred, test.mod1$rating)
+
+paste("Linear Regression MAE: ",MAE_cart)
+paste("Linear Regression RMSE: ",RMSE_cart)
+paste("Linear Regression OSR2: ", OSR2_cart)
+```
+
+Now, use validation set B to perform blending of the collaborative filtering
+model (2) trained in part (3) and the two models trained(linear regression & CART) above.
+```{r}
+### construct valB.blend with prediction all other models
+valB.blend = merge(Songs, valB)
+valB.blend = merge(Users, valB.blend)
+valB.blend$cf_pred = impute(mod.final, valB.blend$userID, valB.blend$songID) %>% pmin(5) %>% pmax(1)
+valB.blend$genre = as.factor(valB.blend$genre)
+valB.blend$year = as.factor(valB.blend$year)
+valB.blend$lm_pred = predict(lm_model, valB.blend)
+valB.blend$cart_pred= predict(CART, valB.blend)
+valB.blend$simp_pred = valB.blend$alpha + valB.blend$beta
+
+```
+
+Fitted the blend model
+```{r}
+## get the blend model
+lm_blend = lm(data = valB.blend, rating ~ cf_pred + lm_pred + simp_pred + cart_pred)
+summary(lm_blend)
+```
+
+```{r}
+### construct test.blend with prediction all other models
+test.blend = merge(Songs, test)
+test.blend = merge(Users, test.blend)
+test.blend$cf_pred = impute(mod.final, test.blend$userID, test.blend$songID) %>% pmin(5) %>% pmax(1)
+test.blend$genre = as.factor(test.blend$genre)
+test.blend$year = as.factor(test.blend$year)
+test.blend$lm_pred = predict(lm_model, test.blend)
+test.blend$cart_pred= predict(CART, test.blend)
+test.blend$simp_pred = test.blend$alpha + test.blend$beta
+## store the test predictions
+test.blend$blend_pred = predict(lm_blend, test.blend)
+```
 
 
 
+```{r}
+MAE_blend <- mean(abs(test.blend$blend_pred - test.blend$rating))/scale
+RMSE_blend <- sqrt(mean((test.blend$blend_pred - test.blend$rating)^2))/scale
+OSR2_blend <- OSR2(test.blend$blend_pred, test.blend$rating)
+
+paste("Linear Regression MAE: ",MAE_blend)
+paste("Linear Regression RMSE: ",RMSE_blend)
+paste("Linear Regression OSR2: ", OSR2_blend)
+```
 
 
-
-
+## Summary
+```{r}
+data.frame("Model" = c("Simple Additive Model", "Collaborative Filtering", "Linear Regression", "CART", "Blended"), "MAE" = c(MAE, MAE_Co, MAE_lm, MAE_cart, MAE_blend), "RMSE" = c(RMSE,RMSE_Co,RMSE_lm,RMSE_cart,RMSE_blend), "OSR^2" = c(OSR2_Si,OSR2_Co,OSR2_lm,OSR2_cart,OSR2_blend))
+```
 
 
 
