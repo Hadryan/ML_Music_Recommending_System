@@ -17,7 +17,7 @@ library(MASS)
 library(rpart)
 ```
 
-# Content
+## Content
 - 1. Data Preprocessing
 - 2. Simple Additive Method
 - 3. Collaborative Filtering method
